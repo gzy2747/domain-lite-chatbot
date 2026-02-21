@@ -47,16 +47,6 @@ uv run python app.py
 uv run python eval.py
 ```
 
-## Deploy (teacher-recommended: Cloud Build)
-
-From the project folder:
-
-```bash
-gcloud builds submit .
-```
-
-This uses `cloudbuild.yaml` to build the image and deploy to Cloud Run. First time may take 10–15 min; later deploys are faster when only app code changes. The service runs with 4Gi memory so the model can load. After deploy, the **Live URL** is printed (or check the Cloud Run console).
-
 
 ## How the Model Is Used
 
