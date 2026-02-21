@@ -25,6 +25,12 @@
                 flex-direction: column;
                 border: 1px solid #e0e0e0;
             }
+            #scope-hint {
+                padding: 0.75rem 1.5rem;
+                font-size: 0.875rem;
+                color: #666;
+                border-bottom: 1px solid #e0e0e0;
+            }
             #messages {
                 overflow-y: auto;
                 padding: 2rem;
@@ -86,12 +92,13 @@
     </head>
     <body>
         <div id="container">
+            <p id="scope-hint">Ask about introductory data analytics — e.g. mean, correlation, hypothesis testing.</p>
             <div id="messages"></div>
             <div id="input-area">
                 <input
                     type="text"
                     id="user-input"
-                    placeholder="Type a message..."
+                    placeholder="e.g. What is mean? What is correlation?"
                     autocomplete="off"
                 />
                 <button id="send-btn">Send</button>
@@ -138,14 +145,22 @@
                             session_id: sessionId,
                         }),
                     });
-                    const data = await res.json();
+                    let data;
+                    try {
+                        data = await res.json();
+                    } catch (_) {
+                        throw new Error("Server error. Please try again.");
+                    }
+                    if (!res.ok) {
+                        throw new Error(data.response || data.message || "Server error. Please try again.");
+                    }
                     sessionId = data.session_id;
                     loading.querySelector(".content").textContent =
                         data.response;
                     loading.classList.remove("loading");
                 } catch (e) {
                     loading.querySelector(".content").textContent =
-                        "Error: " + e.message;
+                        "Sorry, something went wrong. Please try again.";
                     loading.classList.remove("loading");
                 }
                 sendBtn.disabled = false;

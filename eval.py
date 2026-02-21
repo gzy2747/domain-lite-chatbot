@@ -196,7 +196,7 @@ TEST_CASES = [
 # Deterministic Refusal Metric
 
 def refusal_detected(pred):
-    return pred.strip() == "This question is outside my analytics domain."
+    return pred.strip() == "This question is outside of my analytics domain."
 
 
 
@@ -227,7 +227,7 @@ def run_evaluation():
 
     category_stats = defaultdict(list)
 
-    print("Running evaluation...\n")
+    print("Running evaluation...\n", flush=True)
 
     for i, case in enumerate(TEST_CASES, 1):
 
@@ -240,25 +240,25 @@ def run_evaluation():
 
             passed = golden_score >= 5 or rubric_score >= 6
 
-            print(f"Test {i} (in_domain)")
-            print(f"  Golden Score: {golden_score}")
-            print(f"  Rubric Score: {rubric_score}")
-            print(f"  Result: {'PASS' if passed else 'FAIL'}\n")
+            print(f"Test {i} (in_domain)", flush=True)
+            print(f"  Golden Score: {golden_score}", flush=True)
+            print(f"  Rubric Score: {rubric_score}", flush=True)
+            print(f"  Result: {'PASS' if passed else 'FAIL'}\n", flush=True)
 
         else:
 
             passed = refusal_detected(prediction)
-            print(f"Test {i} ({case['type']}): {'PASS' if passed else 'FAIL'}\n")
+            print(f"Test {i} ({case['type']}): {'PASS' if passed else 'FAIL'}\n", flush=True)
 
         category_stats[case["type"]].append(passed)
 
-    print("Category Pass Rates")
+    print("Category Pass Rates", flush=True)
     for cat, vals in category_stats.items():
         rate = sum(vals) / len(vals)
-        print(f"{cat}: {rate:.2%}")
+        print(f"{cat}: {rate:.2%}", flush=True)
 
     overall = sum(sum(v) for v in category_stats.values()) / sum(len(v) for v in category_stats.values())
-    print(f"\nOverall Pass Rate: {overall:.2%}")
+    print(f"\nOverall Pass Rate: {overall:.2%}", flush=True)
 
 
 if __name__ == "__main__":
