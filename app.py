@@ -1,42 +1,78 @@
 import logging
 import re
-import threading
 import uuid
 import uvicorn
-import torch
+import os
+import traceback
+
+import requests
+from dotenv import load_dotenv
+load_dotenv()
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-# MODEL (lazy-loaded so Cloud Run sees the container listen on PORT before timeout)
-MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-_tokenizer = None
-_model = None
-_model_lock = threading.Lock()
+# HuggingFace Inference via featherless-ai provider (OpenAI-compatible chat format).
+# Requires HF_TOKEN with Inference Providers permission (free HF account).
+_HF_API_URL = "https://router.huggingface.co/featherless-ai/v1/chat/completions"
+_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+
+# Structured prompt: role/persona + positive constraints + ≥3 few-shot examples + escape hatch
+_SYSTEM_PROMPT = """You are an Introductory Data Analytics assistant.
+
+You can answer questions about:
+- Descriptive statistics (mean, median, mode, variance, standard deviation, correlation)
+- Basic business metrics (conversion rate, retention rate, average order value)
+- Hypothesis testing fundamentals (null hypothesis, p-value, significance)
+- Exploratory data analysis (EDA, distributions, outliers)
+- Data quality (missing values, sampling bias)
+
+Provide textbook-style definitions. Be concise (1-2 sentences).
+
+When you are unsure or the question is outside these topics, respond exactly with:
+"This question is outside of my analytics domain."
+"""
+
+_FEW_SHOT = [
+    {"role": "user",      "content": "What is mean?"},
+    {"role": "assistant", "content": "The mean is the average value obtained by summing all observations and dividing by the number of observations."},
+    {"role": "user",      "content": "What is variance?"},
+    {"role": "assistant", "content": "Variance measures how far values are spread from the mean."},
+    {"role": "user",      "content": "What is correlation?"},
+    {"role": "assistant", "content": "Correlation measures the strength and direction of the relationship between two variables."},
+    {"role": "user",      "content": "Explain deep learning."},
+    {"role": "assistant", "content": "This question is outside of my analytics domain."},
+]
 
 
-def _get_model():
-    global _tokenizer, _model
-    with _model_lock:
-        if _model is None:
-            _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-            _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            _model.to(device)
-            _model.eval()
-        return _tokenizer, _model
+def _call_hf(question: str) -> str:
+    token = os.environ.get("HF_TOKEN", "")
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": _MODEL,
+        "messages": [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            *_FEW_SHOT,
+            {"role": "user", "content": question},
+        ],
+        "max_tokens": 150,
+        "temperature": 0.1,
+    }
+    try:
+        resp = requests.post(_HF_API_URL, headers=headers, json=payload, timeout=30)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception:
+        logging.exception("HF API call failed")
+        return _FALLBACK
 
 
-def _preload_model():
-    """Run in background so model is ready sooner; container still binds to PORT immediately."""
-    _get_model()
-
-
-
-# Regex Backstop
+# Regex Backstop (defense-in-depth after generation)
 OUT_OF_SCOPE_REGEX = re.compile(
     r"(deep learning|neural networks?|machine learning|ai models?|"
     r"doctor|medical|therapy|diagnosis|treatment|"
@@ -45,7 +81,6 @@ OUT_OF_SCOPE_REGEX = re.compile(
     re.IGNORECASE,
 )
 
-# Safety backstop: distressed keywords → fixed gentle response (escape hatch)
 DISTRESSED_REGEX = re.compile(
     r"(suicide|kill myself|hurt myself|self[\s-]?harm|end (it|my life)|"
     r"want to die|crisis line|helpline)",
@@ -61,7 +96,6 @@ def is_safety_trigger(text: str) -> bool:
     return bool(DISTRESSED_REGEX.search(text))
 
 
-# Greetings → fixed friendly reply (no model call)
 GREETING_PATTERN = re.compile(
     r"^(hi|hello|hey|howdy|yo|greetings?|good\s*(morning|afternoon|evening)|"
     r"how\s*are\s*(you|u)\??\s*$|what'?s\s*up\??\s*$|hi\s+there\s*$)",
@@ -75,42 +109,19 @@ def is_greeting(text: str) -> bool:
         return False
     if GREETING_PATTERN.match(t):
         return True
-    # Very short and looks like a greeting
     words = t.lower().split()
     if len(words) <= 3 and any(w in ("hi", "hello", "hey", "yo") for w in words):
         return True
     return False
 
 
-def _trim_to_last_sentence(text: str) -> str:
-    """If text was cut off by token limit, trim back to last complete sentence."""
-    text = text.strip()
-    if not text or text[-1] in ".!?":
-        return text
-    # Find last sentence terminator and cut there
-    for sep in (". ", "! ", "? "):
-        idx = text.rfind(sep)
-        if idx != -1:
-            return text[: idx + 1].strip()
-    for sep in (".", "!", "?"):
-        idx = text.rfind(sep)
-        if idx != -1:
-            return text[: idx + 1].strip()
-    # No sentence end: trim at last comma to avoid mid-phrase
-    idx = text.rfind(", ")
-    if idx != -1:
-        return text[: idx + 1].strip()
-    return text
-
-
-# Response cache (same question → instant reply)
+# Response cache
 _response_cache: dict[str, str] = {}
 _CACHE_MAX = 500
 
 
-# Instant answers for exact questions you defined (no model call = no wait)
 def _normalize(q: str) -> str:
-    return re.sub(r"\s+", " ", q.strip().lower())
+    return re.sub(r"\s+", " ", q.strip().lower()).rstrip("?.!")
 
 
 CANONICAL_ANSWERS = {
@@ -131,8 +142,13 @@ CANONICAL_ANSWERS = {
     _normalize("Why is data visualization important?"): "Data visualization helps identify patterns, trends, and outliers in data.",
 }
 
+_FALLBACK = (
+    "I can answer introductory data analytics questions — for example: "
+    "mean, median, variance, standard deviation, correlation, hypothesis testing, "
+    "sampling bias, exploratory data analysis, conversion rate, or retention rate."
+)
 
-# Generator
+
 def generate_response(question: str) -> str:
     key = _normalize(question)
     if key in _response_cache:
@@ -159,112 +175,44 @@ def generate_response(question: str) -> str:
             _response_cache[key] = out
         return out
 
-    chatml_prompt = f"""
-<|system|>
-You are an Introductory Data Analytics assistant.
+    # Call the model for novel in-domain questions
+    answer = _call_hf(question)
 
-You only answer questions within these topics:
-- Descriptive statistics (mean, median, variance, correlation)
-- Basic business metrics (conversion rate, retention rate)
-- Hypothesis testing fundamentals
-- Exploratory data analysis
-- Data quality (missing values, sampling bias) and EDA
-
-Provide textbook-style definitions.
-Start with "[Term] is" or "[Term] measures".
-Avoid paraphrasing core statistical terms.
-
-For any question outside the topics above, respond exactly with:
-"This question is outside of my analytics domain."
-
-<|user|>
-What is mean?
-<|assistant|>
-The mean is the average value obtained by summing all observations and dividing by the number of observations.
-
-<|user|>
-What is variance?
-<|assistant|>
-Variance measures how far values are spread from the mean.
-
-<|user|>
-What is correlation?
-<|assistant|>
-Correlation measures the strength and direction of the relationship between two variables.
-
-<|user|>
-Explain deep learning.
-<|assistant|>
-This question is outside of my analytics domain.
-
-<|user|>
-{question}
-<|assistant|>
-
-""".strip()
-
-    tokenizer, model = _get_model()
-    device = next(model.parameters()).device
-    inputs = tokenizer(chatml_prompt, return_tensors="pt").to(device)
-
-    with torch.no_grad():
-        output = model.generate(
-            **inputs,
-            max_new_tokens=100,
-            do_sample=False,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-
-    decoded = tokenizer.decode(output[0], skip_special_tokens=False)
-
-    generated_text = decoded[len(chatml_prompt):]
-
-    stop_tokens = ["<|user|>", "<|assistant|>"]
-
-    answer = generated_text
-    for token in stop_tokens:
-        if token in answer:
-            answer = answer.split(token)[0]
-
-    answer = re.sub(r"<\|/?[a-z]+\|>", "", answer)
-    # Clean model output artifact (leftover token fragments)
-    answer = answer.replace("nt|>", "").strip()
-    # Trim to last complete sentence so we never end mid-phrase when tokens run out
-    answer = _trim_to_last_sentence(answer)
-
+    # Python backstop: re-check generated output (defense-in-depth)
     if is_safety_trigger(answer):
-        out = "I'm not able to help with that. If you're going through a difficult time, please reach out to a mental health professional or a crisis line in your area."
-        if len(_response_cache) < _CACHE_MAX:
-            _response_cache[key] = out
-        return out
-
-    if is_out_of_scope(answer):
+        answer = "I'm not able to help with that. If you're going through a difficult time, please reach out to a mental health professional or a crisis line in your area."
+    elif is_out_of_scope(answer):
         answer = "This question is outside of my analytics domain."
+    else:
+        # Truncation guard: if the model ran out of tokens mid-sentence,
+        # trim to the last complete sentence rather than returning a cut-off reply.
+        if answer and answer[-1] not in ".?!":
+            last_end = max(answer.rfind("."), answer.rfind("?"), answer.rfind("!"))
+            if last_end > 0:
+                answer = answer[:last_end + 1]
 
     if len(_response_cache) < _CACHE_MAX:
         _response_cache[key] = answer
     return answer
 
 
-
-
 # FastAPI
 app = FastAPI()
 
-# Start loading model in background so first request is faster (container still binds to PORT immediately)
-threading.Thread(target=_preload_model, daemon=True).start()
+DEBUG = os.environ.get("DEBUG", "0") in ("1", "true", "True")
 
 
 @app.exception_handler(Exception)
 def unhandled_exception_handler(request: Request, exc: Exception):
     logging.exception("unhandled error")
-    return JSONResponse(
-        status_code=200,
-        content={
-            "response": "Sorry, something went wrong. Please try again.",
-            "session_id": str(uuid.uuid4()),
-        },
-    )
+    content = {
+        "response": "Sorry, something went wrong. Please try again.",
+        "session_id": str(uuid.uuid4()),
+    }
+    if DEBUG:
+        content["error"] = str(exc)
+        content["traceback"] = traceback.format_exc()
+    return JSONResponse(status_code=500, content=content)
 
 
 class ChatRequest(BaseModel):
@@ -291,13 +239,16 @@ def chat(request: ChatRequest):
         )
     except Exception as e:
         logging.exception("chat error")
+        if DEBUG:
+            resp_text = f"Sorry, something went wrong. {e}"
+        else:
+            resp_text = "Sorry, something went wrong. Please try again."
         return ChatResponse(
-            response="Sorry, something went wrong. Please try again.",
+            response=resp_text,
             session_id=str(uuid.uuid4()),
         )
 
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", "8080"))
     uvicorn.run(app, host="0.0.0.0", port=port)

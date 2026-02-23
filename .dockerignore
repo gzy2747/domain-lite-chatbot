@@ -7,3 +7,5 @@ README.md
 eval.py
 *.egg-info
 .DS_Store
+models/
+.env
