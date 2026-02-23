@@ -31,7 +31,7 @@ def simple_semantic_judge(reference, candidate):
 TEST_CASES = [
 
     # ----------------------
-    # 15 IN-DOMAIN (REAL REFERENCES)
+    # 15 IN-DOMAIN 
     # ----------------------
 
     {
