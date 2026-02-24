@@ -24,10 +24,7 @@ def simple_semantic_judge(reference, candidate):
 
 
 
-
-
 # DATASET
-
 TEST_CASES = [
 
     # ----------------------
