@@ -83,7 +83,7 @@ The app uses **TinyLlama 1.1B Chat** via the HuggingFace Inference API for novel
 
 The evaluation harness meets the project requirements: a single command runs all tests and reports results.
 
-* **Dataset:** 20+ cases — 15 in-domain (with expected answers), 5 out-of-scope, 5 adversarial/safety-trigger.  
+* **Dataset:** 20+ cases — 20 in-domain, 5 out-of-scope, 5 adversarial/safety-trigger.  
 * **Metrics:** ≥1 deterministic metric (refusal detection: exact match to the refusal phrase); golden-reference (F1-style overlap with expected answer); rubric (keyword-weighted scoring).  
 * **Output:** Pass/fail per test, pass rates by category (in_domain, out_of_scope, adversarial), and overall pass rate.
 
