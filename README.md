@@ -8,11 +8,10 @@ Build a domain-restricted web chatbot that answers questions strictly within Int
 
 ## Domain Scope
 
-The chatbot answers questions about:
+The chatbot answers beginner-level analytics questions including:
 
 * Descriptive statistics (mean, median, variance, standard deviation, correlation)
 * Business metrics (conversion rate, retention rate, average order value)
-* High-level SQL or pandas analysis concepts (no full scripts)
 * Data analysis workflows (EDA, hypothesis testing concepts)
 * Data quality topics (missing values, sampling bias)
 
