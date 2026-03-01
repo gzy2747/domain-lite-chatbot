@@ -1,7 +1,7 @@
 [project]
-name = "intro-analytics-chatbot"
+name = "cat-behavior-chatbot"
 version = "0.1.0"
-description = "Domain-restricted Q&A chatbot using OpenAI + FastAPI"
+description = "Domain-restricted Q&A chatbot for cat behavior using TinyLlama + FastAPI"
 requires-python = ">=3.10"
 
 dependencies = [

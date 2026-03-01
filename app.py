@@ -20,39 +20,30 @@ _HF_API_URL = "https://router.huggingface.co/featherless-ai/v1/chat/completions"
 _MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
 # Structured prompt: role/persona + positive constraints + ≥3 few-shot examples + escape hatch
-_SYSTEM_PROMPT = """You are an Introductory Data Analytics assistant.
+_SYSTEM_PROMPT = """You are a cat behavior expert assistant.
 
-You can answer questions about:
-- Descriptive statistics (mean, median, mode, variance, standard deviation, correlation)
-- Basic business metrics (conversion rate, retention rate, average order value)
-- Hypothesis testing fundamentals (null hypothesis, p-value, significance)
-- Exploratory data analysis (EDA, distributions, outliers)
-- Data quality (missing values, sampling bias)
+You can only answer questions about:
+- Why cats exhibit specific behaviors (kneading, purring, scratching, chirping, etc.)
+- Cat communication and body language (slow blink, headbutt, tail positions, etc.)
+- Cat instincts and natural habits (hunting, sleeping, grooming, etc.)
+- Cat-human bonding behaviors
+- Common cat quirks and what they mean
 
-Provide strict textbook-style definitions only.
-
-Rules:
-- Give exactly 1–2 sentences.
-- Define the concept directly.
-- Do not provide examples.
-- Do not provide step-by-step explanations.
-- Do not mention specific statistical distributions unless explicitly asked.
-- Do not add background context.
-- Do not speculate.
+Provide clear, factual explanations in 1-3 sentences.
 
 When you are unsure or the question is outside these topics, respond exactly with:
-"This question is outside of my analytics domain."
+"This question is outside of my cat behavior domain."
 """
 
 _FEW_SHOT = [
-    {"role": "user",      "content": "What is mean?"},
-    {"role": "assistant", "content": "The mean is the average value obtained by summing all observations and dividing by the number of observations."},
-    {"role": "user",      "content": "What is variance?"},
-    {"role": "assistant", "content": "Variance measures how far values are spread from the mean."},
-    {"role": "user",      "content": "What is correlation?"},
-    {"role": "assistant", "content": "Correlation measures the strength and direction of the relationship between two variables."},
-    {"role": "user",      "content": "Explain deep learning."},
-    {"role": "assistant", "content": "This question is outside of my analytics domain."},
+    {"role": "user",      "content": "Why do cats knead?"},
+    {"role": "assistant", "content": "Cats knead as a comforting behavior from kittenhood nursing, and continue it as adults when feeling safe and content."},
+    {"role": "user",      "content": "Why do cats bring dead animals?"},
+    {"role": "assistant", "content": "Cats bring dead prey as a gift rooted in their hunting instinct, treating their owners as part of their family group to provide for."},
+    {"role": "user",      "content": "Why do cats purr?"},
+    {"role": "assistant", "content": "Cats purr to express contentment, but also when stressed or injured, as the vibration frequency may promote physical healing."},
+    {"role": "user",      "content": "What is the stock market?"},
+    {"role": "assistant", "content": "This question is outside of my cat behavior domain."},
 ]
 
 
@@ -84,15 +75,30 @@ def _call_hf(question: str) -> str:
 # Regex Backstop (defense-in-depth after generation)
 OUT_OF_SCOPE_REGEX = re.compile(
     r"(deep learning|neural networks?|machine learning|ai models?|"
-    r"doctor|medical|therapy|diagnosis|treatment|"
+    r"stocks?|crypto(?:currency)?|bitcoin|trading|investment|"
+    r"recipe|how to cook|baking|chef|"
     r"legal|lawyer|compliance|regulation|"
-    r"software architecture|system design|backend)",
+    r"medical advice|prescri|"
+    r"dog training|train a dog|"
+    r"software architecture|system design|backend|"
+    r"statistics|statistical|median|variance|standard deviation|"
+    r"correlation|regression|hypothesis test|data analytics|"
+    r"what is (a |the )?mean\b|what'?s (a |the )?mean\b)",
     re.IGNORECASE,
 )
 
 DISTRESSED_REGEX = re.compile(
     r"(suicide|kill myself|hurt myself|self[\s-]?harm|end (it|my life)|"
     r"want to die|crisis line|helpline)",
+    re.IGNORECASE,
+)
+
+# Food safety questions — TinyLlama is too small to be reliably accurate on
+# pet nutrition; deflect all such questions to a veterinarian disclaimer.
+FOOD_SAFETY_REGEX = re.compile(
+    r"(can cats? eat|safe for cats? to eat|is .{0,30} safe for cats?|"
+    r"can i feed (my )?cats?|is .{0,30} toxic to cats?|"
+    r"can cats? (drink|have|consume))",
     re.IGNORECASE,
 )
 
@@ -103,6 +109,10 @@ def is_out_of_scope(text: str) -> bool:
 
 def is_safety_trigger(text: str) -> bool:
     return bool(DISTRESSED_REGEX.search(text))
+
+
+def is_food_safety(text: str) -> bool:
+    return bool(FOOD_SAFETY_REGEX.search(text))
 
 
 GREETING_PATTERN = re.compile(
@@ -134,27 +144,27 @@ def _normalize(q: str) -> str:
 
 
 CANONICAL_ANSWERS = {
-    _normalize("What is mean?"): "The mean is the average value obtained by summing all observations and dividing by the number of observations.",
-    _normalize("What is median?"): "The median is the middle value in a dataset after the values are arranged in order.",
-    _normalize("What is variance?"): "Variance measures how far values are spread from the mean.",
-    _normalize("What is standard deviation?"): "Standard deviation measures how dispersed values are relative to the mean.",
-    _normalize("What is correlation?"): "Correlation measures the strength and direction of the relationship between two variables.",
-    _normalize("What is conversion rate?"): "Conversion rate is the percentage of users who complete a desired action.",
-    _normalize("What is retention rate?"): "Retention rate measures the percentage of users who return over a specific period.",
-    _normalize("What is average order value?"): "Average order value is the average revenue generated per order.",
-    _normalize("What is hypothesis testing?"): "Hypothesis testing is a statistical method used to determine whether there is enough evidence to reject a null hypothesis.",
-    _normalize("What is a null hypothesis?"): "A null hypothesis is a default assumption that there is no effect or relationship.",
-    _normalize("What is sampling bias?"): "Sampling bias occurs when a sample is not representative of the population.",
-    _normalize("What is exploratory data analysis?"): "Exploratory data analysis (EDA) is the process of analyzing data to identify patterns and relationships.",
-    _normalize("Why check for missing values?"): "Missing values can bias results and should be identified before performing analysis.",
-    _normalize("What does correlation coefficient indicate?"): "The correlation coefficient indicates the strength and direction of a linear relationship between variables.",
-    _normalize("Why is data visualization important?"): "Data visualization helps identify patterns, trends, and outliers in data.",
+    _normalize("Why do cats knead?"): "Cats knead as a comforting behavior from kittenhood nursing, and continue it as adults when feeling safe and content.",
+    _normalize("Why do cats purr?"): "Cats purr to express contentment, but also when stressed or injured, as the vibration frequency may promote physical healing.",
+    _normalize("Why do cats rub against people?"): "Cats rub against people to deposit scent from their facial glands, marking them as part of their territory and showing affection.",
+    _normalize("Why do cats push things off tables?"): "Cats push objects off surfaces out of curiosity, to test if they move, and to attract their owner's attention.",
+    _normalize("Why do cats bring dead animals?"): "Cats bring dead prey as a gift rooted in their hunting instinct, treating their owners as part of their family group to provide for.",
+    _normalize("Why do cats show their belly?"): "Cats expose their belly to signal trust and relaxation, but it is not always an invitation to pet — touching it may trigger a defensive response.",
+    _normalize("Why do cats chirp at birds?"): "Cats chirp at birds as an instinctual predatory response, expressing excitement and frustration at prey they cannot reach.",
+    _normalize("Why do cats sleep so much?"): "Cats sleep 12 to 16 hours a day because they are natural predators that conserve energy for short intense bursts of activity.",
+    _normalize("Why do cats scratch furniture?"): "Cats scratch to shed old claw layers, stretch their muscles, and leave scent and visual territorial markings.",
+    _normalize("Why do cats headbutt?"): "Cats headbutt to transfer scent from glands on their head, marking people and objects as safe and familiar.",
+    _normalize("Why do cats knock things over?"): "Cats knock things over to investigate objects with their paws, satisfy hunting instincts, and get attention from their owners.",
+    _normalize("Why do cats stare?"): "Cats stare to assess their environment or focus on potential prey — a prolonged unblinking stare between cats can signal a challenge.",
+    _normalize("Why do cats roll over?"): "Cats roll over to show trust and playfulness, exposing their belly as a sign that they feel completely safe.",
+    _normalize("Why do cats slow blink?"): "Cats slow blink at trusted humans as a sign of affection and relaxed trust — returning the slow blink signals mutual comfort.",
+    _normalize("Why do cats groom themselves?"): "Cats groom to keep their coat clean, regulate body temperature, spread natural oils, and self-soothe.",
 }
 
 _FALLBACK = (
-    "I can answer introductory data analytics questions — for example: "
-    "mean, median, variance, standard deviation, correlation, hypothesis testing, "
-    "sampling bias, exploratory data analysis, conversion rate, or retention rate."
+    "I can answer questions about cat behavior — for example: "
+    "why cats knead, purr, rub against people, push things off tables, "
+    "scratch furniture, slow blink, or bring dead animals."
 )
 
 
@@ -173,13 +183,19 @@ def generate_response(question: str) -> str:
         return out
 
     if is_out_of_scope(question):
-        out = "This question is outside of my analytics domain."
+        out = "This question is outside of my cat behavior domain."
+        if len(_response_cache) < _CACHE_MAX:
+            _response_cache[key] = out
+        return out
+
+    if is_food_safety(question):
+        out = "I'm not able to provide food safety advice — the model powering this bot is too small to be reliably accurate on pet nutrition. For questions about what cats can or cannot eat, please consult your veterinarian."
         if len(_response_cache) < _CACHE_MAX:
             _response_cache[key] = out
         return out
 
     if is_greeting(question):
-        out = "Hi! I'm an introductory data analytics bot. Feel free to ask me about things like mean, correlation, hypothesis testing, or other basic analytics topics."
+        out = "Meow~ I'm your cat behavior expert! Ask me why cats knead, purr, scratch, slow blink, headbutt, or do anything else curious!"
         if len(_response_cache) < _CACHE_MAX:
             _response_cache[key] = out
         return out
@@ -191,7 +207,7 @@ def generate_response(question: str) -> str:
     if is_safety_trigger(answer):
         answer = "I'm not able to help with that. If you're going through a difficult time, please reach out to a mental health professional or a crisis line in your area."
     elif is_out_of_scope(answer):
-        answer = "This question is outside of my analytics domain."
+        answer = "This question is outside of my cat behavior domain."
     else:
         # Truncation guard: if the model ran out of tokens mid-sentence,
         # trim to the last complete sentence rather than returning a cut-off reply.
@@ -199,6 +215,9 @@ def generate_response(question: str) -> str:
             last_end = max(answer.rfind("."), answer.rfind("?"), answer.rfind("!"))
             if last_end > 0:
                 answer = answer[:last_end + 1]
+        # Numbered-list truncation guard: remove trailing empty list items like
+        # "\n\n5." that have no content (token limit hit between number and text).
+        answer = re.sub(r'\n+\d+\.\s*$', '', answer).strip()
 
     if len(_response_cache) < _CACHE_MAX:
         _response_cache[key] = answer
@@ -235,7 +254,7 @@ class ChatResponse(BaseModel):
 
 @app.get("/")
 def index():
-    return FileResponse("index.html")
+    return FileResponse("index2.html")
 
 
 @app.post("/chat", response_model=ChatResponse)
