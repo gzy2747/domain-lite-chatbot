@@ -14,10 +14,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 
-# HuggingFace Inference via featherless-ai provider (OpenAI-compatible chat format).
-# Requires HF_TOKEN with Inference Providers permission (free HF account).
-_HF_API_URL = "https://router.huggingface.co/featherless-ai/v1/chat/completions"
 _MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+
+# If HF_TOKEN is present → use HuggingFace Inference API (Cloud Run / fast path).
+# If not → load TinyLlama locally via transformers (no token needed).
+_USE_API = bool(os.environ.get("HF_TOKEN", "").strip())
+
+# HuggingFace Inference via featherless-ai provider (OpenAI-compatible chat format).
+_HF_API_URL = "https://router.huggingface.co/featherless-ai/v1/chat/completions"
+
+# Local model pipeline — lazily loaded on first request when not using API.
+_local_pipe = None
 
 # Structured prompt: role/persona + positive constraints + ≥3 few-shot examples + escape hatch
 _SYSTEM_PROMPT = """You are a cat behavior expert assistant.
@@ -69,6 +76,43 @@ def _call_hf(question: str) -> str:
         return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception:
         logging.exception("HF API call failed")
+        return _FALLBACK
+
+
+def _get_local_pipe():
+    global _local_pipe
+    if _local_pipe is not None:
+        return _local_pipe
+    try:
+        from transformers import pipeline as hf_pipeline
+        logging.info("Loading TinyLlama locally (first request may be slow)...")
+        _local_pipe = hf_pipeline(
+            "text-generation",
+            model=_MODEL,
+            torch_dtype="auto",
+            device_map="auto",
+        )
+        logging.info("Local model loaded.")
+        return _local_pipe
+    except ImportError:
+        raise RuntimeError(
+            "Local inference requires extra dependencies. "
+            "Run: uv sync --extra local"
+        )
+
+
+def _call_local(question: str) -> str:
+    try:
+        pipe = _get_local_pipe()
+        messages = [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            *_FEW_SHOT,
+            {"role": "user", "content": question},
+        ]
+        outputs = pipe(messages, max_new_tokens=150, temperature=0.1, do_sample=True)
+        return outputs[0]["generated_text"][-1]["content"].strip()
+    except Exception:
+        logging.exception("Local model call failed")
         return _FALLBACK
 
 
@@ -201,7 +245,7 @@ def generate_response(question: str) -> str:
         return out
 
     # Call the model for novel in-domain questions
-    answer = _call_hf(question)
+    answer = _call_hf(question) if _USE_API else _call_local(question)
 
     # Python backstop: re-check generated output (defense-in-depth)
     if is_safety_trigger(answer):
