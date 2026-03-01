@@ -36,15 +36,27 @@ Out-of-scope queries return exactly:
 
 ## Run Locally
 
-1. Install dependencies and run the app:
+**Option A — No HF token (local model, recommended for graders):**
+
+First install the local-inference extras (downloads ~2 GB of PyTorch + Transformers once):
 
 ```bash
+uv sync --extra local
 uv run python app.py
 ```
 
-2. Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in your browser.
+The TinyLlama weights (~2.2 GB) are downloaded automatically on the first request and cached by HuggingFace. Subsequent runs load from cache instantly.
 
-3. Run the evaluation harness (single command per project requirement):
+**Option B — HF token (API, faster startup):**
+
+```bash
+cp .env.example .env   # fill in HF_TOKEN
+uv run python app.py
+```
+
+Either way, open [http://127.0.0.1:8080](http://127.0.0.1:8080) in your browser.
+
+Run the evaluation harness (single command per project requirement):
 
 ```bash
 uv run python eval.py
@@ -53,24 +65,24 @@ uv run python eval.py
 
 ## How the Model Is Used
 
-The app uses **TinyLlama 1.1B Chat** via the HuggingFace Inference API for novel in-domain questions, with rules and caches so common cases are fast and scope is enforced. No model is downloaded — the container makes HTTP calls to HuggingFace's hosted endpoint.
+The app uses **TinyLlama 1.1B Chat** for novel in-domain questions, with rules and caches so common cases are fast and scope is enforced. Two inference modes are supported automatically:
+
+* **API mode** (when `HF_TOKEN` is set): makes HTTP calls to the HuggingFace Inference API (featherless-ai provider). No model weights in the container — used by Cloud Run.
+* **Local mode** (when `HF_TOKEN` is absent): loads TinyLlama weights locally via the `transformers` library. Weights are downloaded once (~2.2 GB) and cached by HuggingFace. No token required.
 
 * **When the model is called**
   Only when the user message is in-domain and not handled by the rules below. The prompt uses the ChatML format and includes: **role/persona** (cat behavior expert assistant), **positive constraints** (topics the bot can answer), **≥3 few-shot examples** (knead, bring dead animals, purr + one out-of-scope refusal), and an **escape hatch** (respond exactly with the refusal phrase when unsure or out-of-scope).
 
 * **Before the model**
-  Response cache → instant reply for repeat questions. Exact matches to 15 canonical cat behavior questions → pre-defined answers (no API call). Safety keywords → fixed gentle signpost. Out-of-scope keywords (regex) → refusal phrase. Greetings → fixed welcome message.
+  Response cache → instant reply for repeat questions. Exact matches to 15 canonical cat behavior questions → pre-defined answers (no model call). Safety keywords → fixed gentle signpost. Out-of-scope keywords (regex) → refusal phrase. Food safety questions → vet disclaimer. Greetings → fixed welcome message.
 
 * **After the model (Python backstop)**
   A regex + keyword backstop runs on the generated text; if it detects out-of-scope or safety content, the reply is replaced with the refusal or safety message (defense-in-depth).
 
-* **Loading**
-  No model weights in the container. The HuggingFace Inference API (featherless-ai provider) is called at request time via HTTP. An `HF_TOKEN` is required — for local dev, copy `.env.example` to `.env` and fill in your token; for Cloud Run, the token is already configured as a service environment variable.
-
 
 ## What's Included
 
-* `app.py` – FastAPI backend with TinyLlama via HuggingFace Inference API
+* `app.py` – FastAPI backend with TinyLlama (local via `transformers` or HF Inference API, auto-detected)
 * `index2.html` – Web frontend (cat behavior UI)
 * `eval.py` – Automated evaluation harness
 * Structured prompt with:
@@ -80,7 +92,7 @@ The app uses **TinyLlama 1.1B Chat** via the HuggingFace Inference API for novel
   * Explicit out-of-scope categories
   * Escape hatch
 * Regex-based Python backstop filter
-* TinyLlama 1.1B Chat via HuggingFace Inference API.
+* TinyLlama 1.1B Chat — local inference (`transformers`) or HuggingFace Inference API, auto-detected.
 
 
 ## Evaluation
@@ -108,8 +120,8 @@ Beyond the core project requirements, the following robustness improvements were
 
 * **Food safety disclaimer** — TinyLlama (1.1B parameters) is too small to be reliably accurate on pet nutrition facts. Questions about what cats can or cannot eat are intercepted before reaching the model and receive a fixed response directing users to consult their veterinarian. This prevents the model from producing plausible-sounding but factually incorrect food safety advice.
 
-* **Graceful API fallback** — If the HuggingFace API call fails for any reason (timeout, rate limit, server error), the user receives an informative fallback message instead of a crash or empty response.
+* **Dual inference mode** — The app auto-detects whether an `HF_TOKEN` is present. When the token is set (Cloud Run), it uses the HuggingFace Inference API for fast, lightweight responses. When no token is present (local clone), it loads TinyLlama via the `transformers` library with no token required. Local deps are declared as an optional group (`uv sync --extra local`) so the Cloud Run container stays small.
 
-* **HF_TOKEN configured end-to-end** — Token is loaded from `.env` for local development (via `python-dotenv`) and set as a Cloud Run environment variable for production, so the app runs correctly in both environments without code changes.
+* **Graceful fallback** — If the model call fails for any reason (API timeout, rate limit, local OOM), the user receives an informative fallback message instead of a crash or empty response.
 
 * **Adaptive suggestion chips** — On the welcome screen, quick-question chips are displayed front-and-center to guide new users. Once the first message is sent and the welcome view is dismissed, the same chips reappear as a compact scrollable bar pinned above the input box, so suggested questions remain accessible throughout the conversation without cluttering the chat history.
