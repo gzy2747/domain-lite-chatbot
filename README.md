@@ -1,6 +1,7 @@
 # Domain Q&A Chatbot – Cat Behavior
 
 **Repository:** https://github.com/g7yue/domain-lite-chatbot
+
 **Live URL:** https://domain-lite-chatbot-32zzvwbxsq-uc.a.run.app
 
 Build a domain-restricted web chatbot that answers questions strictly within cat behavior. The assistant responds to questions about why cats do what they do, and safely refuses out-of-scope requests.
