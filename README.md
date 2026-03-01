@@ -1,33 +1,36 @@
-# Domain Q&A Chatbot – Introductory Data Analytics
+# Domain Q&A Chatbot – Cat Behavior
 
-**Repository:** https://github.com/g7yue/domain-lite-chatbot  
+**Repository:** https://github.com/g7yue/domain-lite-chatbot
 **Live URL:** https://domain-lite-chatbot-32zzvwbxsq-uc.a.run.app
 
-Build a domain-restricted web chatbot that answers questions strictly within Introductory Data Analytics. The assistant responds to beginner-level analytics questions and safely refuses out-of-scope requests.
+Build a domain-restricted web chatbot that answers questions strictly within cat behavior. The assistant responds to questions about why cats do what they do, and safely refuses out-of-scope requests.
 
 
 ## Domain Scope
 
-The chatbot answers beginner-level analytics questions including:
+The chatbot answers questions about cat behavior including:
 
-* Descriptive statistics (mean, median, variance, standard deviation, correlation)
-* Business metrics (conversion rate, retention rate, average order value)
-* Data analysis workflows (EDA, hypothesis testing concepts)
-* Data quality topics (missing values, sampling bias)
+* Why cats exhibit specific behaviors (kneading, purring, scratching, chirping, etc.)
+* Cat communication and body language (slow blink, headbutt, tail positions, etc.)
+* Cat instincts and natural habits (hunting, sleeping, grooming, etc.)
+* Cat-human bonding behaviors
+* Common cat quirks and what they mean
 
 The chatbot does **not** answer questions outside this scope.
-Because the domain is restricted to introductory analytics, it will refuse questions involving:
+It will refuse questions involving:
 
-* Machine learning model training  
-* Neural networks or deep learning  
-* AI model architecture or tuning  
-* Medical or clinical advice  
-* Legal or compliance topics  
-* Software engineering or backend system design  
+* Machine learning or AI models
+* Stocks, crypto, or trading
+* Cooking recipes
+* Legal or compliance topics
+* Medical advice
+* Dog training or other non-cat topics
+* Software engineering or backend system design
+* Statistics or data analytics
 
 Out-of-scope queries return exactly:
 
-`This question is outside of my analytics domain.`
+`This question is outside of my cat behavior domain.`
 
 
 ## Run Locally
@@ -52,10 +55,10 @@ uv run python eval.py
 The app uses **TinyLlama 1.1B Chat** via the HuggingFace Inference API for novel in-domain questions, with rules and caches so common cases are fast and scope is enforced. No model is downloaded — the container makes HTTP calls to HuggingFace's hosted endpoint.
 
 * **When the model is called**
-  Only when the user message is in-domain and not handled by the rules below. The prompt uses the ChatML format and includes: **role/persona** (introductory analytics assistant), **positive constraints** (topics the bot can answer), **≥3 few-shot examples** (mean, variance, correlation + one out-of-scope refusal), and an **escape hatch** (respond exactly with the refusal phrase when unsure or out-of-scope).
+  Only when the user message is in-domain and not handled by the rules below. The prompt uses the ChatML format and includes: **role/persona** (cat behavior expert assistant), **positive constraints** (topics the bot can answer), **≥3 few-shot examples** (knead, bring dead animals, purr + one out-of-scope refusal), and an **escape hatch** (respond exactly with the refusal phrase when unsure or out-of-scope).
 
 * **Before the model**
-  Response cache → instant reply for repeat questions. Exact matches to 15 canonical in-domain questions → pre-defined answers (no API call). Safety keywords → fixed gentle signpost. Out-of-scope keywords (regex) → refusal phrase. Greetings → fixed welcome message.
+  Response cache → instant reply for repeat questions. Exact matches to 15 canonical cat behavior questions → pre-defined answers (no API call). Safety keywords → fixed gentle signpost. Out-of-scope keywords (regex) → refusal phrase. Greetings → fixed welcome message.
 
 * **After the model (Python backstop)**
   A regex + keyword backstop runs on the generated text; if it detects out-of-scope or safety content, the reply is replaced with the refusal or safety message (defense-in-depth).
@@ -67,14 +70,14 @@ The app uses **TinyLlama 1.1B Chat** via the HuggingFace Inference API for novel
 ## What's Included
 
 * `app.py` – FastAPI backend with TinyLlama via HuggingFace Inference API
-* `index.html` – Web frontend  
-* `eval.py` – Automated evaluation harness  
-* Structured prompt with:  
-  * Role + persona  
-  * Positive domain constraints  
-  * 3+ few-shot examples  
-  * Explicit out-of-scope categories  
-  * Escape hatch  
+* `index2.html` – Web frontend (cat behavior UI)
+* `eval.py` – Automated evaluation harness
+* Structured prompt with:
+  * Role + persona
+  * Positive domain constraints
+  * 3+ few-shot examples
+  * Explicit out-of-scope categories
+  * Escape hatch
 * Regex-based Python backstop filter
 * TinyLlama 1.1B Chat via HuggingFace Inference API.
 
@@ -83,8 +86,8 @@ The app uses **TinyLlama 1.1B Chat** via the HuggingFace Inference API for novel
 
 The evaluation harness meets the project requirements: a single command runs all tests and reports results.
 
-* **Dataset:** 20+ cases — 20 in-domain, 5 out-of-scope, 5 adversarial/safety-trigger.  
-* **Metrics:** ≥1 deterministic metric (refusal detection: exact match to the refusal phrase); golden-reference (F1-style overlap with expected answer); rubric (keyword-weighted scoring).  
+* **Dataset:** 30 cases — 20 in-domain (15 canonical + 5 novel), 5 out-of-scope, 5 adversarial.
+* **Metrics:** ≥1 deterministic metric (refusal detection: exact match to the refusal phrase); golden-reference (F1-style overlap with expected answer); rubric (keyword-weighted scoring).
 * **Output:** Pass/fail per test, pass rates by category (in_domain, out_of_scope, adversarial), and overall pass rate.
 
 Run: `uv run python eval.py` (see **Run Locally** above).
@@ -94,14 +97,18 @@ Run: `uv run python eval.py` (see **Run Locally** above).
 
 Beyond the core project requirements, the following robustness improvements were implemented:
 
-* **Truncated response guard** — After model generation, if the response ends mid-sentence (i.e. the last character is not `.`, `?`, or `!`), the text is trimmed to the last complete sentence. This prevents garbled half-answers from reaching the user when the model runs out of tokens mid-generation.
+* **Truncated response guard** — After model generation, two checks run in sequence. First, if the response ends mid-sentence (last character is not `.`, `?`, or `!`), the text is trimmed to the last complete sentence. Second, if the model hit the token limit mid-list and left a dangling numbered item with no content (e.g. `\n\n5.`), that empty item is stripped via regex. Together these prevent garbled or incomplete answers from reaching the user.
 
 * **In-memory response cache** — A 500-entry cache (keyed on the normalized question) stores question→answer pairs. Repeated questions are served instantly without an API call.
 
-* **Canonical answer fast-path** — 15 common introductory analytics questions are mapped to pre-defined, textbook-quality answers. These bypass the model entirely for both speed and consistency.
+* **Canonical answer fast-path** — 15 common cat behavior questions are mapped to pre-defined, expert-quality answers. These bypass the model entirely for both speed and consistency.
 
-* **Multi-layer input pipeline** — Each message passes through five checks before reaching the model: (1) cache lookup, (2) canonical answer match, (3) safety keyword filter, (4) out-of-scope regex filter, (5) greeting detection. The model is only called when all five checks pass.
+* **Multi-layer input pipeline** — Each message passes through six checks before reaching the model: (1) cache lookup, (2) canonical answer match, (3) safety keyword filter, (4) out-of-scope regex filter, (5) food safety filter, (6) greeting detection. The model is only called when all six checks pass.
+
+* **Food safety disclaimer** — TinyLlama (1.1B parameters) is too small to be reliably accurate on pet nutrition facts. Questions about what cats can or cannot eat are intercepted before reaching the model and receive a fixed response directing users to consult their veterinarian. This prevents the model from producing plausible-sounding but factually incorrect food safety advice.
 
 * **Graceful API fallback** — If the HuggingFace API call fails for any reason (timeout, rate limit, server error), the user receives an informative fallback message instead of a crash or empty response.
 
 * **HF_TOKEN configured end-to-end** — Token is loaded from `.env` for local development (via `python-dotenv`) and set as a Cloud Run environment variable for production, so the app runs correctly in both environments without code changes.
+
+* **Adaptive suggestion chips** — On the welcome screen, quick-question chips are displayed front-and-center to guide new users. Once the first message is sent and the welcome view is dismissed, the same chips reappear as a compact scrollable bar pinned above the input box, so suggested questions remain accessible throughout the conversation without cluttering the chat history.
