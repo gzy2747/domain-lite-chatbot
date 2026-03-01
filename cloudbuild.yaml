@@ -1,4 +1,3 @@
-# Replace my-app with your app name in all 4 places (done: domain-lite-chatbot)
 steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/domain-lite-chatbot', '.']
