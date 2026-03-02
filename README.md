@@ -112,7 +112,7 @@ Run: `uv run python eval.py` (see **Run Locally** above).
 
 Beyond the core project requirements, the following robustness improvements were implemented:
 
-* **Truncated response guard** — After model generation, two checks run in sequence. First, if the response ends mid-sentence (last character is not `.`, `?`, or `!`), the text is trimmed to the last complete sentence. Second, if the model hit the token limit mid-list and left a dangling numbered item with no content (e.g. `\n\n5.`), that empty item is stripped via regex. Together these prevent garbled or incomplete answers from reaching the user.
+* **Truncated response guard** — After model generation, two checks run in sequence. First, if the response ends mid-sentence (last character is not `.`, `?`, or `!`), the text is trimmed to the last complete sentence. Second, if the model hit the token limit mid-list and left a dangling numbered item with no content (e.g. `\n\n5.`), that empty item is stripped via regex. Together these prevent garbled or incomplete answers from reaching the user. 
 
 * **In-memory response cache** — A 500-entry cache (keyed on the normalized question) stores question→answer pairs. Repeated questions are served instantly without an API call.
 
