@@ -1,6 +1,6 @@
 # Domain Q&A Chatbot – Cat Behavior
 
-**Repository:** https://github.com/g7yue/domain-lite-chatbot
+**Repository:** https://github.com/gzy2747/domain-lite-chatbot
 
 **Live URL:** https://domain-lite-chatbot-git-448247003375.europe-west1.run.app
 
