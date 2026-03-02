@@ -3,6 +3,7 @@
 **Repository:** https://github.com/gzy2747/domain-lite-chatbot
 
 **Live URL:** https://domain-lite-chatbot-521802278218.us-central1.run.app
+
               https://domain-lite-chatbot-git-448247003375.europe-west1.run.app
 
 Build a domain-restricted web chatbot that answers questions strictly within cat behavior. The assistant responds to questions about why cats do what they do, and safely refuses out-of-scope requests.
